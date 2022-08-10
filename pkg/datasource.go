@@ -817,13 +817,13 @@ func (o *OCIDatasource) processLogMetrics(ctx context.Context, searchLogsReq Gra
 
 									// Check whether the key contains one of the aggregation functions
 									if key == "count" {
-										metricFieldName = ""
+										metricFieldName = "count"
 										numericFieldKey = key
 										// In the JSON content for the log record the count appears as an
 										// integer but when converted becomes a float value
 										numericFieldType = ValueType_Float64
 									} else if reFunc.Match([]byte(key)) == true {
-										metricFieldName = ""
+										metricFieldName = key
 										numericFieldKey = key
 										// The order of these checks is important since integer fields will likely
 										// be convertible as floating point values
@@ -881,10 +881,22 @@ func (o *OCIDatasource) processLogMetrics(ctx context.Context, searchLogsReq Gra
 								}
 
 							} else if numericFieldType == ValueType_Int {
+								// re := regexp.MustCompile(`.*\((.*\))$`)
+								re := regexp.MustCompile(`.*\)(.)`)
+								o.logger.Debug("Chiave", "Chiave", metricFieldName)
+
+								// match, _ := regexp.MatchString(`.*\((.*\))$`, key)
+								match := re.FindString(metricFieldName)
+								o.logger.Debug("Log search operation match", "match", match)
+								if match != "" {
+									fieldDefn = o.getCreateDataFieldElemsForField(mFieldDefns, int(numDataPoints),
+										metricFieldCombKey, metricFieldName, ValueType_Int)
+								} else {
+									fieldDefn = o.getCreateDataFieldElemsForField(mFieldDefns, int(numDataPoints),
+										metricFieldCombKey, metricFieldName, ValueType_Int)
+								}
 
 								// Get or create the data field elements structure for this field
-								fieldDefn = o.getCreateDataFieldElemsForField(mFieldDefns, int(numDataPoints),
-									metricFieldCombKey, metricFieldName, ValueType_Int)
 
 								if intValue, ok := searchResultData[numericFieldKey].(int); ok {
 									fieldDefn.Values.([]*int)[intervalCnt] = &intValue
