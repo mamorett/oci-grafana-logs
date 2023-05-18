@@ -304,6 +304,8 @@ func (o *OCIDatasource) QueryData(ctx context.Context, req *backend.QueryDataReq
 func (o *OCIDatasource) testResponse(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
 	var ts GrafanaCommonRequest
 	var reg common.Region
+	var testResult bool
+	var errAllComp error
 	query := req.Queries[0]
 	if err := json.Unmarshal(query.JSON, &ts); err != nil {
 		return &backend.QueryDataResponse{}, err
@@ -325,6 +327,9 @@ func (o *OCIDatasource) testResponse(ctx context.Context, req *backend.QueryData
 		reg = common.StringToRegion(regio)
 
 		o.tenancyAccess[key].loggingSearchClient.SetRegion(string(reg))
+		// Test Tenancy OCID first
+		o.logger.Debug(key, "Testing Tenancy OCID", tenancyocid)
+
 		if ts.Environment == "local" {
 			queri := `search "` + tenancyocid + `" | sort by datetime desc`
 			t := time.Now()
@@ -339,14 +344,70 @@ func (o *OCIDatasource) testResponse(ctx context.Context, req *backend.QueryData
 			res, err := o.tenancyAccess[key].loggingSearchClient.SearchLogs(ctx, request)
 			if err != nil {
 				o.logger.Debug(key, "FAILED", err)
-				return &backend.QueryDataResponse{}, err
 			}
 			status := res.RawResponse.StatusCode
 			if status >= 200 && status < 300 {
 				o.logger.Debug(key, "OK", status)
 			} else {
-				o.logger.Debug(key, "FAILED", status)
-				return nil, errors.Wrap(err, fmt.Sprintf("list metrics failed %s %d", spew.Sdump(res), status))
+				o.logger.Debug(key, "SKIPPED", fmt.Sprintf("SearchLogs on Tenancy %s did not work, testing compartments", tenancyocid))
+				comparts, Comperr := o.getCompartments(ctx, tenancyocid, regio, key)
+				if Comperr != nil {
+					return &backend.QueryDataResponse{}, errors.Wrap(Comperr, fmt.Sprintf("error fetching Compartments"))
+				}
+				for _, v := range comparts {
+					o.logger.Debug(key, "Testing", v)
+
+					request := logging.ListLogGroupsRequest{Limit: common.Int(69),
+						CompartmentId:            common.String(v),
+						IsCompartmentIdInSubtree: common.Bool(true)}
+					listLogsGroups, err := o.tenancyAccess[key].loggingManagementClient.ListLogGroups(ctx, request)
+					if err == nil {
+						for _, loggroupitem := range listLogsGroups.Items {
+							if &loggroupitem.Id != nil {
+								listLog := logging.ListLogsRequest{
+									LogGroupId: common.String(*loggroupitem.Id),
+								}
+								listLogs, err := o.tenancyAccess[key].loggingManagementClient.ListLogs(ctx, listLog)
+								if err == nil {
+									for _, logitem := range listLogs.Items {
+										if &logitem.Id != nil {
+
+											LogGroupId := common.String(*loggroupitem.Id)
+											queri = `search "` + v + `/` + *LogGroupId + `" | sort by datetime desc`
+											request := loggingsearch.SearchLogsRequest{SearchLogsDetails: loggingsearch.SearchLogsDetails{SearchQuery: common.String(queri),
+												TimeStart:         &common.SDKTime{Time: start},
+												TimeEnd:           &common.SDKTime{Time: end},
+												IsReturnFieldInfo: common.Bool(false)},
+												Limit: common.Int(10)}
+											res, err := o.tenancyAccess[key].loggingSearchClient.SearchLogs(ctx, request)
+											if err != nil {
+												o.logger.Debug(key, "FAILED", err)
+											}
+											status := res.RawResponse.StatusCode
+											if status >= 200 && status < 300 {
+												o.logger.Debug(key, "OK", status)
+												testResult = true
+												break
+											} else {
+												errAllComp = err
+												o.logger.Debug(key, "SKIPPED", status)
+											}
+										}
+									}
+								} else {
+									o.logger.Debug(key, "FAILED", err)
+								}
+
+							}
+						}
+					}
+				}
+			}
+			if testResult {
+				continue
+			} else {
+				o.logger.Debug(key, "FAILED", "listMetrics failed in each compartment")
+				return &backend.QueryDataResponse{}, errors.Wrap(errAllComp, fmt.Sprintf("listMetrics failed in each Compartments in profile %s", key))
 			}
 		} else {
 			request := logging.ListLogGroupsRequest{Limit: common.Int(69),
