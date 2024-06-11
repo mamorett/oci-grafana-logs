@@ -18,6 +18,7 @@ import {
   //QueryPlaceholder,
   regionsQueryRegex,
   tenanciesQueryRegex,
+  generalQueryRegex,
   DEFAULT_TENANCY
 } from "./types";
 //import QueryModel from './query_model';
@@ -91,6 +92,14 @@ export class OCIDataSource extends DataSourceWithBackend<OCIQuery, OCIDataSource
       const tenancy = await this.getTenancies();
       return tenancy.map(n => {
         return { text: n.name, value: n.ocid };
+      });   
+    }
+    
+    const generalQuery = query.match(generalQueryRegex);
+    if (generalQuery) {
+      const general = await this.getSubscribedRegions(tenancy);
+      return general.map(n => {
+        return { text: n, value: n };
       });   
     }    
 
