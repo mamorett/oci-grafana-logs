@@ -18,6 +18,7 @@ import {
   //QueryPlaceholder,
   regionsQueryRegex,
   tenanciesQueryRegex,
+  freeQueryRegex,
   DEFAULT_TENANCY
 } from "./types";
 //import QueryModel from './query_model';
@@ -56,7 +57,6 @@ export class OCIDataSource extends DataSourceWithBackend<OCIQuery, OCIDataSource
     if (query.tenancy) {
       query.tenancy = templateSrv.replace(query.tenancy, scopedVars);
     }
-    
     //const queryModel = new QueryModel(query, getTemplateSrv());
     query.searchQuery = templateSrv.replace(query.searchQuery, scopedVars);
     return query;
@@ -84,7 +84,6 @@ export class OCIDataSource extends DataSourceWithBackend<OCIQuery, OCIDataSource
 
   async metricFindQuery?(query: any, options?: any): Promise<MetricFindValue[]> {
     const templateSrv = getTemplateSrv();
-    // const tmode = this.getJsonData().tenancymode;
 
     const tenancyQuery = query.match(tenanciesQueryRegex);
     if (tenancyQuery) {
@@ -108,7 +107,17 @@ export class OCIDataSource extends DataSourceWithBackend<OCIQuery, OCIDataSource
           return { text: n, value: n };
         });       
       }
-    }   
+    }
+    const freeQuery = query.match(freeQueryRegex);
+    if (freeQuery) {
+      const freequeryvalues = await this.getTenancies();
+      console.log(freequeryvalues)
+
+      return freequeryvalues.map(n => {
+        return { text: n.name, value: n.ocid };
+      });   
+    }    
+    
     return [];
   }
 

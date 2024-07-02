@@ -14,6 +14,8 @@ export enum DefaultOCIOptions {
 export const DEFAULT_TENANCY = "DEFAULT/";
 export const regionsQueryRegex = /^regions\(\s*(\".+\"|\'.+\'|\$\w+)\s*\)|^regions\(\)\s*/;
 export const tenanciesQueryRegex = /^tenancies\(\)\s*/;
+export const freeQueryRegex = /^query\(\s*(search.*?)\s*\)\s*/;
+
 
 export enum OCIResourceCall {
   Tenancies = 'tenancies',
